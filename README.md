@@ -6,6 +6,10 @@ Progetto di contatore Geiger basato su ESP32 con display TFT per la rilevazione 
 
 Questo sistema implementa un contatore Geiger digitale che visualizza in tempo reale le misurazioni di radiazioni su un display TFT colorato. Il progetto è progettato per funzionare con il modulo rilevatore di radiazioni CAJOE (RadiationD v1.1) equipaggiato con tubo Geiger-Müller J305.
 
+Il progetto offre **due implementazioni**:
+- **MicroPython**: Implementazione standalone con display base e funzionalità essenziali
+- **ESPHome**: Versione avanzata con integrazione Home Assistant, grafico a barre e display migliorato
+
 ## Hardware
 
 ### Componenti Principali
@@ -85,11 +89,14 @@ Il fattore di conversione utilizzato nel codice è **0.00332 µSv/h per CPM**, s
 ```
 contatore-geiger/
 ├── boot.py                    # Script di avvio MicroPython
-├── geiger.py                  # Applicazione principale
-├── lib/                       # Librerie hardware
+├── geiger.py                  # Applicazione principale MicroPython
+├── lib/                       # Librerie hardware per MicroPython
 │   ├── st7789.py             # Driver display ST7789
 │   ├── xglcd_font.py         # Sistema font X-GLCD
 │   └── sysfont.py            # Font di sistema
+├── esphome/                   # Implementazione ESPHome
+│   ├── esphome-lilygo-tdisplay-cajoe-geiger.yaml  # Config ESPHome
+│   └── README.md             # Documentazione ESPHome
 ├── fonts/                     # File font
 │   └── Unispace12x24.c       # Font Unispace 12x24
 ├── 3d-enclosure/             # Custodia stampabile 3D
@@ -105,6 +112,25 @@ contatore-geiger/
 ├── CLAUDE.md                 # Guida per Claude Code
 └── LICENSE                   # Licenza del progetto
 ```
+
+## Implementazioni
+
+### Versione MicroPython
+L'implementazione MicroPython (`boot.py`, `geiger.py`) offre:
+- Funzionamento standalone senza dipendenze esterne
+- Display base con valori numerici e simbolo radioattivo
+- Algoritmo di misurazione ottimizzato per performance
+- Ideale per uso educativo e dimostrativo
+
+### Versione ESPHome
+L'implementazione ESPHome (`esphome/`) aggiunge:
+- **Integrazione Home Assistant**: Sensori automatici e dashboard
+- **Display avanzato**: Grafico a barre tempo reale con cronologia
+- **OTA Updates**: Aggiornamenti firmware wireless
+- **Scala logaritmica**: Visualizzazione ottimizzata per range radiazioni
+- **Media mobile**: Buffer circolare per stabilità delle letture
+
+Per dettagli completi vedere: [`esphome/README.md`](esphome/README.md)
 
 ## Custodia 3D
 

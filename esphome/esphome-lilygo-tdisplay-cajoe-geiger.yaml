@@ -1,0 +1,312 @@
+esphome:
+  name: "ttgo-display"
+
+esp32:
+  board: featheresp32
+  framework:
+    type: esp-idf
+
+# Enable logging
+logger:
+
+# Enable Home Assistant API
+api:
+
+ota:
+  - platform: esphome
+
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+  ap: {}
+
+# Font - include glyphs for µ symbol
+font:
+  - file: "gfonts://Roboto"
+    id: roboto
+    size: 20
+    glyphs: "!\"%()+,-.:°0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ abcdefghijklmnopqrstuvwxyz'/µ"
+  - file: "gfonts://Roboto"
+    id: roboto_big
+    size: 28
+    glyphs: "!\"%()+,-.:°0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ abcdefghijklmnopqrstuvwxyz'/µ"
+
+globals:
+  # 1-minute moving average: 60 samples of CPS (1 per second)
+  - id: cps_history_1min
+    type: float[60]
+    restore_value: no
+    initial_value: "{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0}"
+  
+  - id: cps_index_1min
+    type: int
+    restore_value: no
+    initial_value: "0"
+  
+  - id: cps_sum_1min
+    type: float
+    restore_value: no
+    initial_value: "0"
+  
+  - id: samples_collected_1min
+    type: int
+    restore_value: no
+    initial_value: "0"
+
+  # 5-second averaging for bar graph: accumulate CPS over 5 seconds
+  - id: cps_accumulator_5s
+    type: float
+    restore_value: no
+    initial_value: "0"
+  
+  - id: samples_in_5s
+    type: int
+    restore_value: no
+    initial_value: "0"
+
+  # Bar graph history: 25 bars, each showing 5-second average in µSv/h
+  - id: bar_history
+    type: float[25]
+    restore_value: no
+    initial_value: "{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0}"
+
+time:
+  - platform: homeassistant
+    id: esptime
+
+# SPI for display
+spi:
+  clk_pin: GPIO18
+  mosi_pin: GPIO19
+
+sensor:
+  # Pulse counter - counts pulses per minute, we convert to CPS
+  - platform: pulse_counter
+    id: geiger_pulse
+    internal: true
+    pin: 
+      number: 26
+      inverted: false
+      mode:
+        input: true
+        pullup: false
+        pulldown: false
+    unit_of_measurement: 'pulses'
+    count_mode:
+      rising_edge: DISABLE
+      falling_edge: INCREMENT
+    update_interval: 1s
+    use_pcnt: false
+    on_value:
+      then:
+        - lambda: |-
+            // x is already in CPM (counts per minute)
+            float current_cpm = x;
+            
+            // Update 1-minute moving average (working with CPM)
+            if (id(samples_collected_1min) < 60) {
+              // Still collecting initial samples
+              id(cps_history_1min)[id(samples_collected_1min)] = current_cpm;
+              id(cps_sum_1min) += current_cpm;
+              id(samples_collected_1min)++;
+              id(cps_index_1min) = id(samples_collected_1min) % 60;
+            } else {
+              // Rolling average: remove oldest, add newest
+              id(cps_sum_1min) -= id(cps_history_1min)[id(cps_index_1min)];
+              id(cps_history_1min)[id(cps_index_1min)] = current_cpm;
+              id(cps_sum_1min) += current_cpm;
+              id(cps_index_1min) = (id(cps_index_1min) + 1) % 60;
+            }
+            
+            // Accumulate for 5-second average (for bar graph)
+            id(cps_accumulator_5s) += current_cpm;
+            id(samples_in_5s)++;
+            
+            // Trigger display update
+            id(ttgo_display).update();
+
+  # 1-minute average radiation sensor (published to HA)
+  - platform: template
+    id: radiation_1min_avg
+    name: "Radiation 1min Average"
+    unit_of_measurement: 'µSv/h'
+    accuracy_decimals: 3
+    state_class: measurement
+    icon: mdi:radioactive
+    update_interval: 1s
+    lambda: |-
+      if (id(samples_collected_1min) < 60) {
+        return {};  // Not ready yet
+      }
+      float avg_cpm = id(cps_sum_1min) / 60.0;
+      return avg_cpm * 0.00332;  // CPM to µSv/h conversion
+
+switch:
+  - platform: gpio
+    pin: GPIO4
+    name: "LCD Backlight"
+    id: lcd_backlight
+    restore_mode: ALWAYS_ON
+
+display:
+  - platform: mipi_spi
+    id: ttgo_display
+    model: T-DISPLAY
+    cs_pin: GPIO5
+    dc_pin: GPIO16
+    rotation: 90°
+    update_interval: never  # Manual updates only
+    lambda: |-
+      // Display dimensions after 90° rotation: 240x135
+      
+      // Line 1: Title + radioactive symbol
+      it.print(5, 5, id(roboto), Color(255, 255, 255), "CONTATORE GEIGER");
+      
+      // Draw classic radioactive trefoil symbol (☢) in yellow
+      int symbol_x = 215;
+      int symbol_y = 15;
+      int outer_radius = 13;
+      int inner_radius = 4;
+      
+      // Yellow background circle
+      it.filled_circle(symbol_x, symbol_y, outer_radius, Color(255, 255, 0));
+      
+      // Draw three fan-shaped blades (120° apart)
+      for (int i = 0; i < 3; i++) {
+        float base_angle = (i * 120.0 - 90.0) * 3.14159 / 180.0;  // Start from top
+        
+        // Draw filled triangular blade
+        for (float angle_offset = -25.0; angle_offset <= 25.0; angle_offset += 2.0) {
+          float angle = base_angle + (angle_offset * 3.14159 / 180.0);
+          int x_start = symbol_x + (int)(inner_radius * cos(angle));
+          int y_start = symbol_y + (int)(inner_radius * sin(angle));
+          int x_end = symbol_x + (int)(outer_radius * cos(angle));
+          int y_end = symbol_y + (int)(outer_radius * sin(angle));
+          it.line(x_start, y_start, x_end, y_end, Color(0, 0, 0));
+        }
+      }
+      
+      // Black center circle
+      it.filled_circle(symbol_x, symbol_y, inner_radius, Color(0, 0, 0));
+      
+      // Line 2: 1-minute average
+      if (id(samples_collected_1min) >= 60 && id(radiation_1min_avg).has_state()) {
+        it.printf(75, 35, id(roboto_big), Color(255, 255, 255), 
+                  "%.2f µSv/h", id(radiation_1min_avg).state);
+      } else {
+        it.print(75, 35, id(roboto), Color(255, 255, 255), "attesa...");
+      }
+      
+      // Bar graph section - use all remaining screen space
+      // Screen is 240x135 after rotation
+      // Line 1 is at y=5 (height ~25)
+      // Line 2 is at y=35 (height ~25)
+      // Bar area starts at y=65, goes to bottom (135)
+      
+      int bar_area_top = 65;
+      int bar_area_bottom = 135;
+      int bar_area_height = bar_area_bottom - bar_area_top;  // 70 pixels
+      int bar_area_left = 0;
+      int bar_area_right = 240;
+      int bar_area_width = bar_area_right - bar_area_left;  // 240 pixels
+      
+      int num_bars = 25;
+      int bar_spacing = 2;
+      int total_spacing = bar_spacing * (num_bars - 1);
+      int bar_width = (bar_area_width - total_spacing) / num_bars;  // ~8 pixels per bar
+      
+      // Logarithmic scale parameters
+      // Range: 0.1 to 20 µSv/h (log scale)
+      float min_usvh_log = 0.08;  // Minimum for log scale
+      float max_usvh_log = 20.0;   // Maximum for log scale
+      
+      // Clear bar area first
+      it.filled_rectangle(bar_area_left, bar_area_top, bar_area_width, bar_area_height, Color(20, 20, 20));
+      
+      // Draw bars from left to right (oldest to newest)
+      for (int i = 0; i < num_bars; i++) {
+        float val = id(bar_history)[i];
+        
+        if (val <= 0) continue;  // Skip zero or negative values
+        
+        // Clamp value to log range
+        if (val < min_usvh_log) val = min_usvh_log;
+        if (val > max_usvh_log) val = max_usvh_log;
+        
+        // Calculate bar height using logarithmic scale
+        // log_ratio goes from 0 (at min_usvh_log) to 1 (at max_usvh_log)
+        float log_ratio = (log10(val) - log10(min_usvh_log)) / (log10(max_usvh_log) - log10(min_usvh_log));
+        int bar_height = (int)(log_ratio * bar_area_height);
+        
+        if (bar_height < 2) bar_height = 2;  // Minimum visible height
+        if (bar_height > bar_area_height) bar_height = bar_area_height;
+        
+        // Choose color based on thresholds
+        Color bar_color;
+        if (val < 1.0) {
+          bar_color = Color(0, 255, 0);      // Green
+        } else if (val < 5.0) {
+          bar_color = Color(255, 165, 0);    // Orange
+        } else {
+          bar_color = Color(255, 0, 0);      // Red
+        }
+        
+        // Draw bar (bottom-aligned)
+        int x = bar_area_left + i * (bar_width + bar_spacing);
+        int y = bar_area_bottom - bar_height;
+        
+        it.filled_rectangle(x, y, bar_width, bar_height, bar_color);
+      }
+      // Draw reference lines (at 0.1, 1, 10, 20 µSv/h) with labels
+      float reference_levels[] = {0.1, 1.0, 10.0, 20.0};
+      for (int r = 0; r < 4; r++) {
+        float ref_val = reference_levels[r];
+        if (ref_val >= min_usvh_log && ref_val <= max_usvh_log) {
+          float log_ratio = (log10(ref_val) - log10(min_usvh_log)) / (log10(max_usvh_log) - log10(min_usvh_log));
+          int ref_y = bar_area_bottom - (int)(log_ratio * bar_area_height);
+          it.line(bar_area_left, ref_y, bar_area_right, ref_y, Color(60, 60, 60));
+          
+          // Add small label at the left edge
+          char label[8];
+          if (ref_val < 1.0) {
+            snprintf(label, sizeof(label), "%.1f", ref_val);
+          } else {
+            snprintf(label, sizeof(label), "%.0f", ref_val);
+          }
+          if (r < 4)
+            it.printf(bar_area_left + 2, ref_y - 15, id(roboto), Color(100, 100, 100), TextAlign::TOP_LEFT, label);
+        }
+      }
+
+# Update bar graph every 5 seconds
+interval:
+  - interval: 5s
+    then:
+      - lambda: |-
+          // Calculate 5-second average CPM
+          float avg_5s_cpm = 0;
+          if (id(samples_in_5s) > 0) {
+            avg_5s_cpm = id(cps_accumulator_5s) / id(samples_in_5s);
+          }
+          float avg_5s_usvh = avg_5s_cpm * 0.00332;  // CPM to µSv/h
+          
+          ESP_LOGD("bargraph", "5s average: %.3f CPM = %.3f µSv/h (samples: %d)", 
+                   avg_5s_cpm, avg_5s_usvh, id(samples_in_5s));
+          
+          // Shift bars left (oldest bar at index 0 gets discarded)
+          for (int i = 0; i < 24; i++) {
+            id(bar_history)[i] = id(bar_history)[i + 1];
+          }
+          // Add new bar at the right (index 24)
+          id(bar_history)[24] = avg_5s_usvh;
+          
+          ESP_LOGD("bargraph", "Bar history (last 5): %.3f, %.3f, %.3f, %.3f, %.3f", 
+                   id(bar_history)[20], id(bar_history)[21], id(bar_history)[22], 
+                   id(bar_history)[23], id(bar_history)[24]);
+          
+          // Reset 5-second accumulator
+          id(cps_accumulator_5s) = 0;
+          id(samples_in_5s) = 0;
+          
+          // Update display
+          id(ttgo_display).update();
