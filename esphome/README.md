@@ -2,9 +2,25 @@
 
 Implementazione ESPHome per il contatore Geiger con LILYGO T-Display e modulo CAJOE RadiationD v1.1.
 
+![Contatore Geiger Completo](../images/rilevatore-con-battery-pack-1024x768.jpg)
+*Dispositivo completo assemblato: LILYGO T-Display ESP32, modulo CAJOE RadiationD v1.1 in case trasparente, e battery pack per utilizzo portatile*
+
 ## Panoramica
 
 Questa versione ESPHome del contatore Geiger fornisce integrazione diretta con Home Assistant e include un display grafico avanzato con grafico a barre in tempo reale delle misurazioni di radiazioni.
+
+### Contesto del Progetto
+
+Questo progetto nasce nell'ambito di **BergamoScienza**, un'iniziativa educativa sviluppata da [FabLab Bergamo](https://www.fablabbergamo.it/2025/10/05/caccia-alla-radioattivita-un-progetto-scolastico-per-bergamoscienza/), con l'obiettivo di creare un rilevatore di radioattività economico e accessibile per scopi didattici.
+
+**Obiettivi principali:**
+- Dimostrare tecniche di misurazione della radioattività
+- Fornire esperienza pratica con elettronica e programmazione
+- Spiegare principi di schermatura dalle radiazioni e legge dell'inverso del quadrato
+- Creare strumento riproducibile per educazione scientifica
+
+**Risultati sul campo:**
+Durante test sul campo nell'area mineraria di Novazza, il dispositivo ha rilevato con successo campioni di minerali contenenti uranio, misurando livelli di radiazione da 0.08 a 7 µSv/h, dimostrando la sua efficacia per applicazioni didattiche reali.
 
 ## Caratteristiche
 
@@ -30,6 +46,16 @@ Questa versione ESPHome del contatore Geiger fornisce integrazione diretta con H
 
 ## Configurazione Hardware
 
+### Componenti Necessari
+
+**Hardware principale:**
+- **LILYGO T-Display ESP32** (~€9) - Microcontrollore con display integrato
+- **CAJOE RadiationD v1.1** (~€30) - Kit Geiger con tubo J305β
+- **Battery pack** (10000mAh raccomandato) - Per utilizzo portatile
+- **Case stampato 3D** - Protezione e alloggiamento componenti
+
+**Costo totale:** ~€40-50 (escluso case)
+
 ### Pin Assignment LILYGO T-Display
 - **Display SPI**: SCLK=18, MOSI=19, CS=5, DC=16
 - **Backlight**: GPIO4 (controllabile via switch)
@@ -40,6 +66,9 @@ Collegare ai morsetti P3:
 - **+5V**: Alimentazione positiva
 - **GND**: Massa
 - **IMPULSO**: Segnale a GPIO26
+
+![Forma impulso Geiger](../images/impulso_geiger.png)
+*Forma d'onda tipica dell'impulso dal tubo Geiger misurata con oscilloscopio. Il segnale mostra un impulso negativo con durata ~338µs utilizzato per il conteggio degli eventi di radiazione.*
 
 ## File di Configurazione
 
@@ -163,6 +192,9 @@ severity:
 | **Complessità** | Media | Bassa |
 | **Customizzazione** | Configurazione | Codice diretto |
 
+![Sviluppo MicroPython](../images/thonny-2-1-1024x629.jpg)
+*Versione MicroPython in sviluppo con Thonny IDE, mostrando il codice sorgente e il plotter in tempo reale delle misurazioni di radiazione (µSv/h e media). Questa versione è stata utilizzata per i test iniziali e la validazione del progetto.*
+
 ## Note Tecniche
 
 ### Conversione CPM → µSv/h
@@ -173,3 +205,36 @@ ESPHome gestisce automaticamente gli interrupt GPIO con debouncing hardware, for
 
 ### Memoria e Stabilità
 L'utilizzo di buffer statici e gestione deterministica della memoria garantisce stabilità a lungo termine senza memory leak.
+
+## Sicurezza e Uso Educativo
+
+### Protocolli di Sicurezza
+Quando si lavora con materiali radioattivi, anche a bassa intensità:
+- Mantenere sempre la distanza massima possibile dalle sorgenti
+- La distanza è il metodo primario di protezione dalle radiazioni
+- Seguire le linee guida per la manipolazione di campioni minerali
+- Non raccogliere o conservare materiali radioattivi senza adeguate precauzioni
+
+### Applicazioni Didattiche
+Il dispositivo è ideale per:
+- Dimostrazioni in classe di fisica delle radiazioni
+- Progetti STEM di elettronica e programmazione
+- Misurazioni ambientali di radiazioni di fondo
+- Studio della legge dell'inverso del quadrato
+- Esperimenti su schermatura dalle radiazioni
+
+### Range Tipici di Misurazione
+- **Radiazione di fondo naturale**: 0.08-0.30 µSv/h
+- **Materiali da costruzione**: 0.10-0.50 µSv/h
+- **Minerali contenenti uranio**: 1.0-20+ µSv/h
+- **Limite raccomandato esposizione pubblica**: <1 mSv/anno (equivalente a ~0.11 µSv/h continua)
+
+## Riproducibilità e Open Source
+
+Questo progetto è completamente open source e riproducibile:
+- **Codice sorgente**: Disponibile su [GitHub](https://github.com/yourusername/contatore-geiger)
+- **Lista materiali**: Tutti i componenti sono facilmente reperibili
+- **Documentazione completa**: Istruzioni dettagliate per assemblaggio e configurazione
+- **Community support**: Contributi e miglioramenti benvenuti
+
+Per maggiori informazioni sul progetto educativo BergamoScienza, visita [FabLab Bergamo](https://www.fablabbergamo.it/).
