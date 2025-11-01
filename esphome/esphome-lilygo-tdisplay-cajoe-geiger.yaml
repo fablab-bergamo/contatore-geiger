@@ -70,6 +70,12 @@ globals:
     restore_value: no
     initial_value: "{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0}"
 
+  # Latest 5-second average for real-time HA sensor
+  - id: latest_5s_usvh
+    type: float
+    restore_value: no
+    initial_value: "0"
+
 time:
   - platform: homeassistant
     id: esptime
@@ -140,6 +146,18 @@ sensor:
       }
       float avg_cpm = id(cps_sum_1min) / 60.0;
       return avg_cpm * 0.00332;  // CPM to µSv/h conversion
+
+  # 5-second real-time radiation sensor (published to HA)
+  - platform: template
+    id: radiation_5s_realtime
+    name: "Radiation 5s Realtime"
+    unit_of_measurement: 'µSv/h'
+    accuracy_decimals: 3
+    state_class: measurement
+    icon: mdi:radioactive
+    update_interval: 5s
+    lambda: |-
+      return id(latest_5s_usvh);
 
 switch:
   - platform: gpio
@@ -299,11 +317,14 @@ interval:
           }
           // Add new bar at the right (index 24)
           id(bar_history)[24] = avg_5s_usvh;
-          
-          ESP_LOGD("bargraph", "Bar history (last 5): %.3f, %.3f, %.3f, %.3f, %.3f", 
-                   id(bar_history)[20], id(bar_history)[21], id(bar_history)[22], 
+
+          // Store for real-time HA sensor
+          id(latest_5s_usvh) = avg_5s_usvh;
+
+          ESP_LOGD("bargraph", "Bar history (last 5): %.3f, %.3f, %.3f, %.3f, %.3f",
+                   id(bar_history)[20], id(bar_history)[21], id(bar_history)[22],
                    id(bar_history)[23], id(bar_history)[24]);
-          
+
           // Reset 5-second accumulator
           id(cps_accumulator_5s) = 0;
           id(samples_in_5s) = 0;
